@@ -1,5 +1,7 @@
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+'use client'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendingDown, TrendingUp } from 'lucide-react'
@@ -12,31 +14,51 @@ interface WeightDataPoint {
   displayDate: string
 }
 
-export default async function ProgressPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+export default function ProgressPage() {
+  const router = useRouter()
+  const [weights, setWeights] = useState<BodyWeightLog[]>([])
+  const [workoutLogs, setWorkoutLogs] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const now = new Date()
-  const weekStart = getWeekStartDate(now)
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-  const eightWeeksAgo = new Date(now.getTime() - 8 * 7 * 24 * 60 * 60 * 1000)
+  useEffect(() => {
+    async function loadData() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
 
-  const [weightsRes, workoutLogsRes] = await Promise.all([
-    supabase
-      .from('body_weight_logs')
-      .select('*')
-      .eq('user_id', user.id)
-      .gte('date', eightWeeksAgo.toISOString().split('T')[0])
-      .order('date', { ascending: true }),
-    supabase
-      .from('workout_logs')
-      .select('*')
-      .eq('user_id', user.id)
-      .gte('date', monthStart.toISOString().split('T')[0]),
-  ])
+      const now = new Date()
+      const weekStart = getWeekStartDate(now)
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+      const eightWeeksAgo = new Date(now.getTime() - 8 * 7 * 24 * 60 * 60 * 1000)
 
-  const weights = (weightsRes.data ?? []) as BodyWeightLog[]
+      const [weightsRes, workoutLogsRes] = await Promise.all([
+        supabase
+          .from('body_weight_logs')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('date', eightWeeksAgo.toISOString().split('T')[0])
+          .order('date', { ascending: true }),
+        supabase
+          .from('workout_logs')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('date', monthStart.toISOString().split('T')[0]),
+      ])
+
+      setWeights((weightsRes.data ?? []) as BodyWeightLog[])
+      setWorkoutLogs(workoutLogsRes.data ?? [])
+      setLoading(false)
+    }
+
+    loadData()
+  }, [router])
+
+  if (loading) {
+    return <div className="p-4 text-sm text-muted-foreground pb-20">Loading...</div>
+  }
 
   // Calculate weight stats
   let currentWeight = 0
@@ -64,7 +86,8 @@ export default async function ProgressPage() {
   })
 
   // Count workouts
-  const workoutLogs = workoutLogsRes.data ?? []
+  const now = new Date()
+  const weekStart = getWeekStartDate(now)
   const thisWeekWorkouts = workoutLogs.filter(
     (w) => w.date >= weekStart && w.completed
   ).length
