@@ -1,41 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
-import { buildWorkoutVariationPrompt } from '@/lib/ai/workout-variation'
-import { VARIATION_POOLS } from '@/lib/plan-data/workouts'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const MOCK_VARIATIONS = {
+  variations: {
+    'Goblet Squat': 'Box Squat',
+    'Romanian Deadlift': 'Single-Leg RDL',
+    'Dumbbell Row': 'Chest-Supported Row',
+    'Dumbbell Chest Press': 'Push-Ups',
+    'Plank': 'Dead Bug',
+    'Sumo Deadlift': 'Conventional Deadlift',
+    'Bulgarian Split Squat': 'Reverse Lunge',
+    'Lat Pulldown': 'Assisted Pull-Up',
+    'Dumbbell Shoulder Press': 'Arnold Press',
+    'Hip Thrust': 'Glute Bridge',
+  },
+}
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { weekStartDate, lastWeekVariations = {} } = await request.json()
-
-  const prompt = buildWorkoutVariationPrompt({
-    variationPools: VARIATION_POOLS,
-    lastWeekVariations,
-  })
-
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  const content = message.content[0]
-  if (content.type !== 'text') {
-    return NextResponse.json({ error: 'Unexpected response type' }, { status: 500 })
-  }
-
-  let parsed: { variations: Record<string, string> }
-  try {
-    const jsonText = content.text.replace(/^```json?\n?/, '').replace(/\n?```$/, '')
-    parsed = JSON.parse(jsonText)
-  } catch {
-    return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 })
-  }
+  const { weekStartDate } = await request.json()
+  const parsed = MOCK_VARIATIONS
 
   // Delete existing variation for this week if regenerating
   await supabase
